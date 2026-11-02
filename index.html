@@ -58,6 +58,11 @@
             }
         }
 
+        .star.fixed {
+            animation: none;
+            opacity: .9
+        }
+
         .moon {
             position: absolute;
             top: 50px;
@@ -78,14 +83,13 @@
 
         .shoot {
             position: absolute;
-            top: 10%;
-            left: -10%;
-            width: 120px;
+            width: 140px;
             height: 2px;
-            background: linear-gradient(90deg,rgba(255,255,255,0),#fff);
-            transform: rotate(25deg);
+            border-radius: 2px;
             opacity: 0;
-            animation: shoot 9s linear infinite 3s
+            background: linear-gradient(90deg,rgba(255,255,255,0),#fff);
+            filter: drop-shadow(0 0 4px #fff);
+            animation: shoot var(--dur,9s) linear infinite var(--delay,0s)
         }
 
         @keyframes shoot {
@@ -94,17 +98,18 @@
                 transform: translate(0,0) rotate(25deg)
             }
 
-            3% {
+            2% {
                 opacity: 1
             }
 
-            12% {
+            10% {
                 opacity: 0;
-                transform: translate(70vw,35vh) rotate(25deg)
+                transform: translate(60vw,28vh) rotate(25deg)
             }
 
             100% {
-                opacity: 0
+                opacity: 0;
+                transform: translate(60vw,28vh) rotate(25deg)
             }
         }
 
@@ -123,14 +128,8 @@
         }
 
         h1 {
-            margin: 8px 0 4px;
+            margin: 8px 0 12px;
             text-shadow: 0 0 18px rgba(170,180,255,.5)
-        }
-
-        .tag {
-            color: var(--sub);
-            margin: 0 0 12px;
-            font-size: 14px
         }
 
         nav button {
@@ -273,11 +272,10 @@
     </style>
 </head>
 <body>
-    <div id="sky"><div class="moon"></div><div class="shoot"></div></div>
+    <div id="sky"><div class="moon"></div></div>
 
     <div class="wrap">
         <h1>🌙 나의 수면 관리</h1>
-        <p class="tag">오늘 밤, 별빛 아래서 편안한 잠을</p>
         <nav>
             <button data-t="rec" class="act">권장 수면</button>
             <button data-t="log">오늘 기록</button>
@@ -298,7 +296,7 @@
                     <option value="5">매우 높음 (시험·발표)</option>
                 </select>
             </label>
-            <label>내일 기상 시각 <input id="wake" type="time" value="07:00"></label>
+            <label>희망 기상 시간 <input id="wake" type="time" value="07:00"></label>
             <button id="calc">계산</button>
             <div id="recOut" class="box"></div>
         </section>

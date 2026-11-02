@@ -9,14 +9,40 @@ const load = () => JSON.parse(localStorage.getItem(KEY) || '[]').map(r => ({
 const save = v => localStorage.setItem(KEY, JSON.stringify(v));
 
 // ---------- 밤하늘 별 생성 ----------
-(function makeStars() {
+const FIXED_STARS = 90;   // 항상 박혀 있는 별 개수
+const TWINKLE_STARS = 70; // 반짝이는 별 개수
+const SHOOTING_STARS = 8; // 별똥별 개수 (늘리면 더 자주 내려옵니다)
+
+(function makeSky() {
   const sky = $('sky');
-  for (let i = 0; i < 130; i++) {
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // 고정된 별 (반짝이지 않고 항상 보임)
+  for (let i = 0; i < FIXED_STARS; i++) {
     const s = document.createElement('div');
-    const size = Math.random() * 2.2 + 0.8;
+    const size = rnd(1, 3);
+    s.className = 'star fixed';
+    s.style.cssText = `left:${rnd(0, 100)}%;top:${rnd(0, 100)}%;width:${size}px;height:${size}px;` +
+      (size > 2.3 ? 'box-shadow:0 0 6px 1px rgba(255,255,255,.7);' : '');
+    sky.appendChild(s);
+  }
+
+  // 반짝이는 별
+  for (let i = 0; i < TWINKLE_STARS; i++) {
+    const s = document.createElement('div');
+    const size = rnd(0.8, 3);
     s.className = 'star';
-    s.style.cssText = `left:${Math.random() * 100}%;top:${Math.random() * 100}%;` +
-      `width:${size}px;height:${size}px;--d:${2 + Math.random() * 4}s;animation-delay:${Math.random() * 4}s`;
+    s.style.cssText = `left:${rnd(0, 100)}%;top:${rnd(0, 100)}%;width:${size}px;height:${size}px;` +
+      `--d:${rnd(2, 6)}s;animation-delay:${rnd(0, 4)}s`;
+    sky.appendChild(s);
+  }
+
+  // 별똥별 (위치·속도·간격이 제각각)
+  for (let i = 0; i < SHOOTING_STARS; i++) {
+    const s = document.createElement('div');
+    s.className = 'shoot';
+    s.style.cssText = `left:${rnd(-5, 60)}%;top:${rnd(0, 45)}%;` +
+      `--dur:${rnd(6, 14)}s;--delay:${rnd(0, 10)}s`;
     sky.appendChild(s);
   }
 })();
