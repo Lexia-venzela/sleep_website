@@ -30,7 +30,7 @@
 
         label {
             display: block;
-            margin: 8px 0
+            margin: 10px 0
         }
 
         input, select {
@@ -42,6 +42,47 @@
             padding: 12px;
             border-radius: 8px;
             margin-top: 12px
+        }
+
+        .note {
+            font-size: 13px;
+            color: #555;
+            background: #fffbe6;
+            border: 1px solid #f0e2a0;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0
+        }
+
+        table.lv {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 14px;
+            margin-top: 8px
+        }
+
+            table.lv td, table.lv th {
+                border: 1px solid #ddd;
+                padding: 6px 8px;
+                text-align: left
+            }
+
+        .chip {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 6px;
+            vertical-align: middle
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 13px;
+            margin-left: 6px
         }
     </style>
 </head>
@@ -67,7 +108,7 @@
                 <option value="5">매우 높음 (시험·발표)</option>
             </select>
         </label>
-        <label>내일의 희망기상 시각 <input id="wake" type="time" value="07:00"></label>
+        <label>내일 기상 시각 <input id="wake" type="time" value="07:00"></label>
         <button id="calc">계산</button>
         <div id="recOut" class="box"></div>
     </section>
@@ -75,20 +116,56 @@
     <section id="log">
         <h2>오늘 기록 입력</h2>
         <label>날짜 <input id="d" type="date"></label>
-        <label>수면 시간(시간) <input id="sh" type="number" step="0.1"></label>
-        <label>PVT 반응시간(ms) <input id="pvt" type="number"></label>
-        <label>Stroop 반응시간(ms) <input id="stroop" type="number"></label>
-        <label>Forerunner 스트레스(0~100) <input id="st" type="number" min="0" max="100"></label>
+        <label>수면 시간(시간) <input id="sh" type="number" step="0.1" min="0" max="24"></label>
+
+        <label>
+            오늘의 집중도 (1~10)
+            <select id="focusIn"></select>
+            <span id="focusLabel"></span>
+        </label>
+        <table class="lv">
+            <tr><th>점수</th><th>집중도</th></tr>
+            <tr><td><span class="chip" style="background:#e04b4b"></span>1~3</td><td>낮음 (멍하고 쉽게 산만해짐)</td></tr>
+            <tr><td><span class="chip" style="background:#f5a623"></span>4~6</td><td>보통</td></tr>
+            <tr><td><span class="chip" style="background:#4caf50"></span>7~10</td><td>높음 (또렷하고 몰입이 잘 됨)</td></tr>
+        </table>
+        <div class="note">집중도 1~10 점수는 <b>PVT(반응속도) 및 스트룹 테스트 수치를 기반</b>으로 작성되었습니다.</div>
+
+        <label>
+            오늘의 스트레스 점수 (0~100, 시계의 HRV 스트레스 값)
+            <input id="stIn" type="number" min="0" max="100">
+            <span id="stLabel"></span>
+        </label>
+        <table class="lv">
+            <tr><th>점수</th><th>스트레스 정도</th></tr>
+            <tr><td><span class="chip" style="background:#4a90d9"></span>0~25</td><td>Resting state (휴식 상태)</td></tr>
+            <tr><td><span class="chip" style="background:#4caf50"></span>26~50</td><td>Low stress (낮은 정도의 스트레스)</td></tr>
+            <tr><td><span class="chip" style="background:#f5a623"></span>51~75</td><td>Medium stress (중간 정도의 스트레스)</td></tr>
+            <tr><td><span class="chip" style="background:#e04b4b"></span>76~100</td><td>High stress (높은 정도의 스트레스)</td></tr>
+        </table>
+        <div class="note">스트레스 점수는 <b>HRV(심박변이도)를 이용해 기록한 값</b>입니다.</div>
+
         <button id="save">저장</button> <span id="msg"></span>
     </section>
 
     <section id="focus">
         <h2>최근 7일: 수면 vs 집중도</h2>
+        <div class="note">
+            <b>보는 법:</b> 막대는 수면 시간(왼쪽 축), 선과 점은 집중도 1~10점(오른쪽 축)입니다.
+            배경이 <span style="color:#4caf50">초록</span>이면 집중도 높음, <span style="color:#d49b00">노랑</span>은 보통,
+            <span style="color:#e04b4b">빨강</span>은 낮음 구간입니다.<br>
+            집중도 점수는 PVT 및 스트룹 테스트 수치를 기반으로 작성되었습니다.
+        </div>
         <canvas id="c1"></canvas><div id="r1" class="box"></div>
     </section>
 
     <section id="stress">
         <h2>최근 7일: 수면 vs 스트레스</h2>
+        <div class="note">
+            <b>보는 법:</b> 막대는 수면 시간(왼쪽 축), 선과 점은 HRV 스트레스 점수 0~100(오른쪽 축)입니다.
+            배경 색은 <span style="color:#4a90d9">휴식</span> / <span style="color:#4caf50">낮음</span> /
+            <span style="color:#d49b00">중간</span> / <span style="color:#e04b4b">높음</span> 단계입니다.
+        </div>
         <canvas id="c2"></canvas><div id="r2" class="box"></div>
     </section>
 

@@ -1,70 +1,181 @@
 const $ = id => document.getElementById(id);
 const KEY = 'sleepLog';
-const load = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+
+// 이전 버전 기록(st 키)도 호환
+const load = () => JSON.parse(localStorage.getItem(KEY) || '[]').map(r => ({
+  d: r.d, sh: r.sh ?? null,
+  focus: r.focus ?? null,
+  stress: r.stress ?? r.st ?? null
+}));
 const save = v => localStorage.setItem(KEY, JSON.stringify(v));
 
-// ---- 탭 전환 ----
+// ---------- 단계 정의 ----------
+const COLORS = { red:'#e04b4b', yellow:'#f5a623', green:'#4caf50', blue:'#4a90d9' };
+
+function focusLevel(v) {
+  if (v <= 3) return { name:'낮음', color:COLORS.red };
+  if (v <= 6) return { name:'보통', color:COLORS.yellow };
+  return { name:'높음', color:COLORS.green };
+}
+function stressLevel(v) {
+  if (v <= 25) return { name:'Resting state (휴식 상태)', color:COLORS.blue };
+  if (v <= 50) return { name:'Low stress (낮은 정도의 스트레스)', color:COLORS.green };
+  if (v <= 75) return { name:'Medium stress (중간 정도의 스트레스)', color:COLORS.yellow };
+  return { name:'High stress (높은 정도의 스트레스)', color:COLORS.red };
+}
+const badge = l => `<span class="badge" style="background:${l.color}">${l.name}</span>`;
+
+// ---------- 탭 전환 ----------
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('section').forEach(s => s.classList.remove('on'));
   $(b.dataset.t).classList.add('on');
   if (b.dataset.t === 'focus' || b.dataset.t === 'stress') drawCharts();
 });
 
-// ---- 1. 권장 수면 시간 (ornage+anaconda 돌리고 예측치 교체) ----
+// ---------- 1. 권장 수면 시간 (임시 규칙: 나중에 모델 계수로 교체) ----------
 function recommend(age, cups, need) {
   let base = age <= 17 ? 9 : age <= 25 ? 8 : age <= 64 ? 7.5 : 7;
-  base += Math.min(cups, 5) * 0.1;      // 카페인 보정 (최대 +0.5h)
-  base += (need - 3) * 0.25;            // 집중 필요도 보정 (-0.5 ~ +0.5h)
+  base += Math.min(cups, 5) * 0.1;
+  base += (need - 3) * 0.25;
   return Math.min(10, Math.max(6, base));
 }
 $('calc').onclick = () => {
-  const h = recommend(+$('age').value, +$('cups')?.value || +$('caf').value, +$('need').value);
+  const h = recommend(+$('age').value, +$('caf').value, +$('need').value);
   const [wh, wm] = $('wake').value.split(':').map(Number);
-  let bed = wh * 60 + wm - Math.round(h * 60) - 15; // 잠드는 데 15분 가정
+  let bed = wh * 60 + wm - Math.round(h * 60) - 15;
   bed = (bed + 1440) % 1440;
   const f = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
   $('recOut').innerHTML = `권장 수면: <b>${h.toFixed(1)}시간</b><br>권장 취침 시각: <b>${f(bed)}</b>`;
 };
 
-// ---- 기록 저장 ----
+// ---------- 기록 입력 ----------
 $('d').valueAsDate = new Date();
-$('save').onclick = () => {
-  const rec = { d: $('d').value, sh: +$('sh').value, pvt: +$('pvt').value,
-                stroop: +$('stroop').value, st: +$('st').value };
-  const data = load().filter(x => x.d !== rec.d).concat(rec).sort((a, b) => a.d.localeCompare(b.d));
-  save(data); $('msg').textContent = '저장되었습니다 ✔';
+$('focusIn').innerHTML = '<option value="">선택 안 함</option>' +
+  Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+
+$('focusIn').onchange = () => {
+  const v = $('focusIn').value;
+  $('focusLabel').innerHTML = v ? badge(focusLevel(+v)) : '';
+};
+$('stIn').oninput = () => {
+  const v = $('stIn').value;
+  $('stLabel').innerHTML = v !== '' ? badge(stressLevel(+v)) : '';
 };
 
-// ---- 2·3. 7일 추이 + 상관관계->2, 3일은 뺄까? ----
+$('save').onclick = () => {
+  const num = id => $(id).value === '' ? null : +$(id).value;
+  const sh = num('sh'), focus = num('focusIn');
+  let stress = num('stIn');
+  if (!$('d').value || sh === null) { $('msg').textContent = '날짜와 수면 시간을 입력해 주세요.'; return; }
+  if (stress !== null) stress = Math.min(100, Math.max(0, stress));
+  const rec = { d: $('d').value, sh, focus, stress };
+  const data = load().filter(x => x.d !== rec.d).concat(rec).sort((a, b) => a.d.localeCompare(b.d));
+  save(data);
+  $('msg').textContent = '저장되었습니다 ✔';
+};
+
+// ---------- 그래프 ----------
+// 배경 색 띠를 그리는 플러그인
+Chart.register({
+  id: 'bands',
+  beforeDraw(chart, args, opts) {
+    if (!opts || !chart.scales.y2) return;
+    const { ctx, chartArea: { left, right }, scales: { y2 } } = chart;
+    opts.forEach(b => {
+      const top = y2.getPixelForValue(b.to), bottom = y2.getPixelForValue(b.from);
+      ctx.save(); ctx.fillStyle = b.color; ctx.fillRect(left, top, right - left, bottom - top); ctx.restore();
+    });
+  }
+});
+
 const pearson = (x, y) => {
   const n = x.length; if (n < 3) return null;
   const mx = x.reduce((a, b) => a + b) / n, my = y.reduce((a, b) => a + b) / n;
   let sxy = 0, sxx = 0, syy = 0;
   x.forEach((v, i) => { sxy += (v - mx) * (y[i] - my); sxx += (v - mx) ** 2; syy += (y[i] - my) ** 2; });
-  return sxy / Math.sqrt(sxx * syy);
+  const d = Math.sqrt(sxx * syy);
+  return d === 0 ? null : sxy / d;
 };
-let charts = {};
-function draw(canvasId, outId, label, key, color) {
+
+const charts = {};
+function draw(cfg) {
   const w = load().slice(-7);
-  charts[canvasId]?.destroy();
-  charts[canvasId] = new Chart($(canvasId), {
-    data: { labels: w.map(x => x.d.slice(5)),
+  charts[cfg.canvas]?.destroy();
+  const vals = w.map(x => x[cfg.key]);
+
+  charts[cfg.canvas] = new Chart($(cfg.canvas), {
+    data: {
+      labels: w.map(x => x.d.slice(5)),
       datasets: [
-        { type: 'bar', label: '수면(시간)', data: w.map(x => x.sh), yAxisID: 'y' },
-        { type: 'line', label, data: w.map(x => x[key]), borderColor: color, yAxisID: 'y2' }]},
-    options: { scales: { y: { title: { display: true, text: '시간' } },
-                         y2: { position: 'right', grid: { drawOnChartArea: false } } } }
+        { type: 'bar', label: '수면(시간)', data: w.map(x => x.sh),
+          backgroundColor: 'rgba(90,110,160,0.55)', yAxisID: 'y', order: 2 },
+        { type: 'line', label: cfg.label, data: vals, spanGaps: true,
+          borderColor: '#333', borderWidth: 2, yAxisID: 'y2', order: 1,
+          pointRadius: 7, pointHoverRadius: 9,
+          pointBackgroundColor: vals.map(v => v == null ? '#999' : cfg.level(v).color),
+          pointBorderColor: '#fff', pointBorderWidth: 2 }
+      ]
+    },
+    options: {
+      plugins: {
+        bands: cfg.bands,
+        tooltip: { callbacks: { label: c =>
+          c.datasetIndex === 1 && c.raw != null
+            ? `${cfg.label}: ${c.raw} → ${cfg.level(c.raw).name}`
+            : `수면: ${c.raw}시간` } }
+      },
+      scales: {
+        y: { min: 0, max: 12, title: { display: true, text: '수면 시간(시간)' } },
+        y2: { position: 'right', min: cfg.min, max: cfg.max,
+              title: { display: true, text: cfg.axis }, grid: { drawOnChartArea: false } }
+      }
+    }
   });
-  const r = pearson(w.map(x => x.sh), w.map(x => x[key]));
-  $(outId).textContent = r === null ? '데이터가 3일 이상 필요합니다.'
-    : `수면시간과 ${label}의 상관계수: ${r.toFixed(2)} (7일 데이터, 참고용)`;
-}
-function drawCharts() {
-  draw('c1', 'r1', 'PVT 반응시간(ms)', 'pvt', 'crimson');
-  draw('c2', 'r2', '스트레스 지수', 'st', 'orange');
+
+  // 해석 문장
+  const pairs = w.filter(x => x.sh != null && x[cfg.key] != null);
+  const out = $(cfg.out);
+  if (pairs.length < 3) {
+    out.innerHTML = `${cfg.label} 기록이 <b>3일 이상</b> 있어야 수면과의 관계를 보여드릴 수 있어요.`;
+    return;
+  }
+  const r = pearson(pairs.map(x => x.sh), pairs.map(x => x[cfg.key]));
+  const avg = pairs.reduce((a, x) => a + x[cfg.key], 0) / pairs.length;
+  let msg = '수면 시간과 뚜렷한 관계가 보이지 않습니다.';
+  if (r !== null && r >= 0.5) msg = cfg.posMsg;
+  else if (r !== null && r <= -0.5) msg = cfg.negMsg;
+  out.innerHTML = `최근 평균 ${cfg.label}: <b>${avg.toFixed(1)}</b> ${badge(cfg.level(avg))}<br>
+    📌 ${msg}<br>
+    <small>상관계수 ${r === null ? '-' : r.toFixed(2)} (최근 ${pairs.length}일, 경향일 뿐 원인을 의미하지 않아요)</small>`;
 }
 
-// ---- 4. 알림 ----
+function drawCharts() {
+  draw({
+    canvas: 'c1', out: 'r1', key: 'focus', label: '집중도', axis: '집중도 (1~10점)',
+    min: 0, max: 10, level: focusLevel,
+    bands: [
+      { from: 0, to: 3.5, color: 'rgba(224,75,75,0.12)' },
+      { from: 3.5, to: 6.5, color: 'rgba(245,166,35,0.14)' },
+      { from: 6.5, to: 10, color: 'rgba(76,175,80,0.14)' }
+    ],
+    posMsg: '잠을 많이 잔 날 집중도가 높은 경향이 있어요.',
+    negMsg: '잠을 많이 잔 날 오히려 집중도가 낮은 경향이에요. 수면의 질이나 다른 요인도 살펴보세요.'
+  });
+  draw({
+    canvas: 'c2', out: 'r2', key: 'stress', label: '스트레스 점수', axis: '스트레스 (0~100점)',
+    min: 0, max: 100, level: stressLevel,
+    bands: [
+      { from: 0, to: 25, color: 'rgba(74,144,217,0.15)' },
+      { from: 25, to: 50, color: 'rgba(76,175,80,0.14)' },
+      { from: 50, to: 75, color: 'rgba(245,166,35,0.15)' },
+      { from: 75, to: 100, color: 'rgba(224,75,75,0.13)' }
+    ],
+    posMsg: '잠을 많이 잔 날 스트레스 점수도 높은 경향이에요. 다른 요인을 함께 살펴보세요.',
+    negMsg: '잠을 많이 잔 날 스트레스가 낮아지는 경향이 있어요.'
+  });
+}
+
+// ---------- 4. 알림 ----------
 let timer;
 $('aset').onclick = async () => {
   if (await Notification.requestPermission() !== 'granted') return alert('알림 권한이 필요합니다.');
