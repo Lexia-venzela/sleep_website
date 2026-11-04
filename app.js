@@ -11,7 +11,7 @@ const save = v => localStorage.setItem(KEY, JSON.stringify(v));
 // ---------- 밤하늘 별 생성 ----------
 const FIXED_STARS = 90;   // 항상 박혀 있는 별 개수
 const TWINKLE_STARS = 70; // 반짝이는 별 개수
-const SHOOTING_STARS = 8; // 별똥별 개수 (늘리면 더 자주 내려옵니다)
+const SHOOTING_STARS = 10; // 별똥별 개수
 
 (function makeSky() {
   const sky = $('sky');
@@ -86,15 +86,54 @@ function recommend(age, cups, need) {
   base += (need - 3) * 0.25;
   return Math.min(10, Math.max(6, base));
 }
+// ---------- AI 모델 (Kaggle 학생 수면 데이터로 학습) ----------
+// 입력 순서: [나이, 화면 시간(시간), 카페인]  ← 노트북의 열 순서와 같아야 합니다
+let AI = null;
+fetch('model/sleep_model.json').then(r => r.json()).then(j => { AI = j; }).catch(() => { AI = null; });
+
+function aiPredict(age, screen, caf) {
+  if (!AI) return null;
+  const raw = [age, screen, caf];
+  let x = raw.map((v, i) => (v - AI.mean[i]) / AI.scale[i]);
+  const layers = AI.weights.length / 2;           // W,b 쌍의 개수
+  for (let L = 0; L < layers; L++) {
+    const W = AI.weights[2 * L], b = AI.weights[2 * L + 1];
+    const last = L === layers - 1;
+    x = b.map((bj, j) => {
+      let s = bj;
+      for (let i = 0; i < x.length; i++) s += x[i] * W[i][j];
+      return last ? s : Math.max(0, s);           // 마지막 층만 선형, 나머지 ReLU
+    });
+  }
+  return x[0];
+}
+
 $('calc').onclick = () => {
-  const h = recommend(+$('age').value, +$('caf').value, +$('need').value);
+  const age = +$('age').value, caf = +$('caf').value;
+  const screen = Math.max(0, +$('scH').value || 0) + Math.min(59, Math.max(0, +$('scM').value || 0)) / 60;
+  const h = recommend(age, caf, +$('need').value);
   const [wh, wm] = $('wake').value.split(':').map(Number);
   let bed = wh * 60 + wm - Math.round(h * 60) - 15;
   bed = (bed + 1440) % 1440;
   const f = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-  $('recOut').innerHTML = `권장 수면: <b>${fmtHM(h)}</b> (${h.toFixed(2)}시간)<br>권장 취침 시각: <b>${f(bed)}</b>`;
-};
 
+  let html = `권장 수면: <b>${fmtHM(h)}</b> (${h.toFixed(2)}시간)<br>권장 취침 시각: <b>${f(bed)}</b>`;
+
+  const p = aiPredict(age, screen, caf);
+  if (p !== null) {
+    let inRange = age >= AI.age_range[0] && age <= AI.age_range[1] &&
+                  caf >= AI.caf_range[0] && caf <= AI.caf_range[1];
+    if (AI.screen_range) inRange = inRange && screen >= AI.screen_range[0] && screen <= AI.screen_range[1];
+    const rangeTxt = `나이 ${AI.age_range.join('~')}세, 카페인 ${AI.caf_range.join('~')}잔` +
+      (AI.screen_range ? `, 전자기기 ${AI.screen_range.join('~')}시간` : '');
+    html += `<hr style="border:0;border-top:1px solid rgba(255,255,255,.2)">
+      🤖 <b>비슷한 학생의 실제 평균 수면 (AI 예측)</b>: ${fmtHM(Math.max(0, p))}<br>
+      <small>Kaggle 학생 수면 데이터(500명)로 학습한 모델이며, 나이·전자기기 사용 시간·카페인만 사용합니다.
+      평균 오차 약 ${AI.mae.toFixed(1)}시간이므로 참고용으로만 봐 주세요.
+      ${inRange ? '' : '<br>⚠ 입력값이 학습 데이터 범위(' + rangeTxt + ') 밖이라 예측이 부정확할 수 있어요.'}</small>`;
+  }
+  $('recOut').innerHTML = html;
+};
 // ---------- 기록 입력 ----------
 $('d').valueAsDate = new Date();
 $('focusIn').innerHTML = '<option value="">선택 안 함</option>' +
